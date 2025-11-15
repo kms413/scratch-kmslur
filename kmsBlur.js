@@ -150,18 +150,18 @@
         return setup[sc.translate.language]?.[x] || setup.en[x]
     }
     function blurImage(uri, blur, width, height){
-        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.setAttribute("xmlns", "http://www.w3.org/2000/svg"), svg.setAttribute("version", "1.1"), svg.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+        svg.setAttribute("xmlns", "http://www.w3.org/2000/svg"), svg.setAttribute("version", "1.1"), svg.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink")
         const u = Math.ceil(3 * blur),
             a = width + 2 * u,
-            n = height + 2 * u;
-        svg.setAttribute("width", a), svg.setAttribute("height", n), svg.setAttribute("viewBox", `0 0 ${a} ${n}`);
-        const o = document.createElementNS("http://www.w3.org/2000/svg", "image");
-        o.setAttribute("href", uri), o.setAttribute("x", u), o.setAttribute("y", u), o.setAttribute("width", width), o.setAttribute("height", height), o.setAttribute("filter", "url(#blur)");
+            n = height + 2 * u
+        svg.setAttribute("width", a), svg.setAttribute("height", n), svg.setAttribute("viewBox", `0 0 ${a} ${n}`)
+        const o = document.createElementNS("http://www.w3.org/2000/svg", "image")
+        o.setAttribute("href", uri), o.setAttribute("x", u), o.setAttribute("y", u), o.setAttribute("width", width), o.setAttribute("height", height), o.setAttribute("filter", "url(#blur)")
         const b = document.createElementNS("http://www.w3.org/2000/svg", "defs"),
-            s = document.createElementNS("http://www.w3.org/2000/svg", "filter");
-        s.id = "blur", s.setAttribute("x", "-100%"), s.setAttribute("y", "-100%"), s.setAttribute("width", "300%"), s.setAttribute("height", "300%");
-        const g = document.createElementNS("http://www.w3.org/2000/svg", "feGaussianBlur");
+            s = document.createElementNS("http://www.w3.org/2000/svg", "filter")
+        s.id = "blur", s.setAttribute("x", "-100%"), s.setAttribute("y", "-100%"), s.setAttribute("width", "300%"), s.setAttribute("height", "300%")
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "feGaussianBlur")
         return g.setAttribute("stdDeviation", blur), s.appendChild(g), b.appendChild(s), svg.appendChild(b), svg.appendChild(o), {
             svg: svg,
             decode: (new XMLSerializer).serializeToString(svg),
@@ -184,7 +184,8 @@
     }
     function waitDone(skin,id){
         return new Promise(resolve=>{
-            renderer._allSkins[skin]._svgImage.addEventListener('load',()=>{
+            function e(e){
+                e.target.removeEventListener('load',e)
                 renderer._allDrawables[id].skin = renderer._allSkins[skin]
                 runtime.requestRedraw()
                 function r(){
@@ -192,7 +193,8 @@
                     resolve()
                 }
                 runtime.on("BEFORE_EXECUTE",r)
-            })
+            }
+            renderer._allSkins[skin]._svgImage.addEventListener('load',e)
         })
     }
     function waitFPS(){
@@ -211,7 +213,6 @@
             this.blurred = {}
             runtime.on("PROJECT_STOP_ALL",()=>{
                 this.clearCache()
-                runtime.stop()
             })
         }
         getInfo(){
@@ -263,35 +264,57 @@
                 ]
             }
         }
-        clearCache(){
-            for(let i in this.origin){
-                for(let j of renderer._allDrawables){
-                    if(j.skin.id === this.origin[i].id) j.skin = renderer._allSkins[i]
+        clearCache() {
+            for (const drawableID in this.origin) {
+                const originSkins = this.origin[drawableID]
+                for (const originalSkinID in originSkins) {
+                    const blurredSkinID = originSkins[originalSkinID].id
+                    for (const drawable of renderer._allDrawables) {
+                        drawable.skin.id === blurredSkinID && (drawable.skin=renderer._allSkins[originalSkinID])
+                    }
+                    if (renderer._allSkins[blurredSkinID]) {
+                        renderer.destroySkin(blurredSkinID)
+                    }
                 }
-                renderer.destroySkin(this.origin[i].id)
             }
+            for (const drawableID in this.blurred) {
+                const blurredSkins = this.blurred[drawableID]
+                for (const blurredSkinID in blurredSkins) {
+                    const originalSkinID = blurredSkins[blurredSkinID].id
+                    if (renderer._allSkins[blurredSkinID]) {
+                        renderer.destroySkin(blurredSkinID)
+                    }
+                }
+            }
+
             this.origin = {}
             this.blurred = {}
         }
+
+
         getBlur(args,util){
             const target = util.target
             ,id = target.drawableID
             ,skin = renderer._allDrawables[id].skin.id 
-            return this.blurred?.[skin]?.blur || 0
+            return this.blurred?.[id]?.[skin]?.blur || 0
         }
         async setBlur(args,util){
             if(isNaN(args.blur) || args.blur <= 0) return this.restoreOriginal(args,util)
             const target = util.target
             ,id = target.drawableID
             
+            this.origin[id] ??= {}
+            this.blurred[id] ??= {}
+
+
             let oskin = renderer._allDrawables[id].skin
             ,skinId = oskin.id
             ,nskinId = skinId
 
-            if(this.origin[skinId]){
-                nskinId = this.origin[skinId].id
-            }else if(this.blurred[skinId]){
-                nskinId = this.blurred[skinId].id
+            if(this.origin[id][skinId]){
+                nskinId = this.origin[id][skinId].id
+            }else if(this.blurred[id][skinId]){
+                nskinId = this.blurred[id][skinId].id
             }
             oskin = renderer._allSkins[nskinId]
 
@@ -303,27 +326,27 @@
             ,rotationCenter = oskin.rotationCenter.map(x=>x+blurred.margin)
             
             let skin
-            if(this.origin[skinId]){
-                skin = this.origin[skinId].id
+            if(this.origin[id][skinId]){
+                skin = this.origin[id][skinId].id
                 renderer.updateSVGSkin(skin,blurred.decode,rotationCenter)
-                this.blurred[this.origin[skinId].id].blur = args.blur
+                this.blurred[this.origin[id][skinId].id].blur = args.blur
                 console.log("Updated")
-            }else if(this.blurred[skinId]){
+            }else if(this.blurred[id][skinId]){
                 skin = skinId
                 renderer.updateSVGSkin(skinId,blurred.decode,rotationCenter)
-                this.blurred[skinId].blur = args.blur
+                this.blurred[id][skinId].blur = args.blur
                 console.log("Updated")
             }else{
                 skin = renderer.createSVGSkin(blurred.decode,rotationCenter)
-                this.origin[skinId] = {id:skin}
-                this.blurred[skin] = {id:skinId,blur:args.blur}
+                this.origin[id][skinId] = {id:skin}
+                this.blurred[id][skin] = {id:skinId,blur:args.blur}
                 console.log("Craeted")
             }
 
             return waitDone(skin,id)
         }
         async changeBlur(args,util){
-            let blur = this.getBlur(args,util) + args.blur
+            let blur = +(this.getBlur(args,util)) + +(args.blur)
             if(isNaN(blur)) return Promise.resolve()
             return this.setBlur({blur:blur},util)
         }
@@ -331,9 +354,9 @@
             const target = util.target
             ,id = target.drawableID
             ,skin = renderer._allDrawables[id].skin.id
-            if(this.blurred[skin]){
-                renderer._allDrawables[id].skin = renderer._allSkins[this.blurred[skin].id]
-                this.blurred[skin].blur = 0
+            if(this.blurred[id][skin]){
+                renderer._allDrawables[id].skin = renderer._allSkins[this.blurred[id][skin].id]
+                this.blurred[id][skin].blur = 0
                 runtime.requestRedraw()
             }
             return Promise.resolve()
